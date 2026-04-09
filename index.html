@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATC — Air Traffic Community</title>
+  <meta name="description" content="The community-first aviation platform built around live global airspace. Join the waitlist." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,300;1,400&family=Barlow+Condensed:wght@300;400;500;600;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #080A0F;
+      --surface:      #0C0F18;
+      --surface-2:    #111520;
+      --border:       #1A2030;
+      --border-light: #242E44;
+      --green:        #00D68F;
+      --green-dim:    rgba(0, 214, 143, 0.12);
+      --green-glow:   rgba(0, 214, 143, 0.35);
+      --amber:        #FFB547;
+      --amber-dim:    rgba(255, 181, 71, 0.12);
+      --blue:         #3B82F6;
+      --cyan:         #06B6D4;
+      --text:         #E8EDF7;
+      --text-2:       #7A8499;
+      --text-3:       #3C4559;
+      --font-mono:    'Share Tech Mono', monospace;
+      --font-body:    'Barlow', sans-serif;
+      --font-cond:    'Barlow Condensed', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Noise Overlay ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0.6;
+    }
+
+    /* ─── Canvas Radar ──────────────────────────────────────────── */
+    #radar-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.35;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────── */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ─── Nav ───────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 20px 0;
+      background: linear-gradient(to bottom, rgba(8,10,15,0.95) 0%, transparent 100%);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(26,32,48,0.5);
+    }
+
+    nav .inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .nav-logo .callsign {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--green);
+      letter-spacing: 0.1em;
+      opacity: 0.7;
+    }
+
+    .nav-wordmark {
+      font-family: var(--font-cond);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .nav-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-2);
+      letter-spacing: 0.08em;
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ─── Hero ──────────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-top: 100px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-grid-overlay {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,214,143,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,214,143,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 0%, transparent 70%);
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 500px;
+      background: radial-gradient(ellipse at center, rgba(0,214,143,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .squawk-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border: 1px solid rgba(0,214,143,0.3);
+      border-radius: 2px;
+      background: var(--green-dim);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--green);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+      animation: fadeSlideUp 0.8s ease both;
+    }
+
+    .squawk-tag .blink {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: blink 1.2s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .hero-heading {
+      font-family: var(--font-cond);
+      font-size: clamp(52px, 8vw, 110px);
+      font-weight: 900;
+      line-height: 0.92;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      animation: fadeSlideUp 0.8s 0.1s ease both;
+    }
+
+    .hero-heading .line-1 { color: var(--text); display: block; }
+    .hero-heading .line-2 {
+      display: block;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(232,237,247,0.2);
+    }
+    .hero-heading .line-3 {
+      display: block;
+      color: var(--green);
+      text-shadow: 0 0 60px var(--green-glow), 0 0 120px rgba(0,214,143,0.2);
+    }
+
+    .hero-sub {
+      font-family: var(--font-body);
+      font-size: clamp(15px, 2vw, 18px);
+      font-weight: 300;
+      color: var(--text-2);
+      max-width: 520px;
+      line-height: 1.65;
+      margin-top: 28px;
+      margin-bottom: 48px;
+      animation: fadeSlideUp 0.8s 0.2s ease both;
+    }
+
+    .hero-sub strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* ─── Waitlist Form ─────────────────────────────────────────── */
+    .waitlist-form {
+      display: flex;
+      gap: 0;
+      max-width: 500px;
+      animation: fadeSlideUp 0.8s 0.3s ease both;
+      position: relative;
+    }
+
+    .waitlist-form::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 3px;
+      background: linear-gradient(135deg, rgba(0,214,143,0.4) 0%, transparent 50%, transparent 100%);
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .waitlist-form:focus-within::before { opacity: 1; }
+
+    .form-input-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    .form-input-wrap .input-label {
+      position: absolute;
+      top: -20px;
+      left: 0;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-3);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-light);
+      border-right: none;
+      border-radius: 2px 0 0 2px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+      letter-spacing: 0.04em;
+    }
+
+    .form-input::placeholder { color: var(--text-3); }
+    .form-input:focus {
+      border-color: rgba(0,214,143,0.5);
+      background: #0f1420;
+    }
+
+    .form-submit {
+      padding: 14px 28px;
+      background: var(--green);
+      color: #060810;
+      border: none;
+      border-radius: 0 2px 2px 0;
+      font-family: var(--font-cond);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+      white-space: nowrap;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .form-submit::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 0; height: 0;
+      border-style: solid;
+      border-width: 0 8px 8px 0;
+      border-color: transparent rgba(6,8,16,0.4) transparent transparent;
+    }
+
+    .form-submit:hover {
+      background: #00f0a0;
+      box-shadow: 0 0 20px var(--green-glow), 0 0 40px rgba(0,214,143,0.15);
+    }
+
+    .form-submit:active { transform: scale(0.98); }
+
+    .form-submit.success {
+      background: var(--green);
+      pointer-events: none;
+    }
+
+    .hero-meta {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-top: 20px;
+      animation: fadeSlideUp 0.8s 0.4s ease both;
+    }
+
+    .hero-meta-item {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-3);
+      letter-spacing: 0.1em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-meta-item span { color: var(--green); }
+
+    /* ─── Counter strip ─────────────────────────────────────────── */
+    .counter-strip {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 24px 0;
+      margin: 80px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .counter-strip::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, var(--bg) 0%, transparent 15%, transparent 85%, var(--bg) 100%);
+      z-index: 1;
+    }
+
+    .counter-scroll {
+      display: flex;
+      gap: 0;
+      animation: scrollLeft 30s linear infinite;
+      width: max-content;
+    }
+
+    @keyframes scrollLeft {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .counter-item {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      padding: 0 48px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .counter-item:last-child { border-right: none; }
+
+    .counter-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-3);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .counter-value {
+      font-family: var(--font-cond);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Features Grid ─────────────────────────────────────────── */
+    .section-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--green);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-eyebrow::after {
+      content: '';
+      flex: 1;
+      max-width: 60px;
+      height: 1px;
+      background: rgba(0,214,143,0.3);
+    }
+
+    .section-title {
+      font-family: var(--font-cond);
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .section-body {
+      font-size: 16px;
+      font-weight: 300;
+      color: var(--text-2);
+      max-width: 480px;
+      line-height: 1.7;
+      margin-bottom: 56px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+
+    .feature-card {
+      background: var(--surface);
+      padding: 32px 28px;
+      position: relative;
+      transition: background 0.3s;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 2px; height: 0;
+      background: var(--green);
+      transition: height 0.4s ease;
+    }
+
+    .feature-card:hover { background: var(--surface-2); }
+    .feature-card:hover::before { height: 100%; }
+
+    .feature-card.amber::before { background: var(--amber); }
+    .feature-card.blue::before { background: var(--blue); }
+    .feature-card.amber:hover .feature-icon { color: var(--amber); }
+    .feature-card.blue:hover .feature-icon { color: var(--blue); }
+
+    .feature-index {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-3);
+      letter-spacing: 0.15em;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 14px;
+      transition: color 0.3s;
+      color: var(--green);
+    }
+
+    .feature-title {
+      font-family: var(--font-cond);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .feature-desc {
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--text-2);
+      line-height: 1.65;
+    }
+
+    /* ─── Tier Section ──────────────────────────────────────────── */
+    .tiers-section {
+      padding: 100px 0;
+    }
+
+    .tiers-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 48px;
+    }
+
+    .tier-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 28px 20px;
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+
+    .tier-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--tier-color);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.4s ease;
+    }
+
+    .tier-card:hover { transform: translateY(-4px); border-color: var(--tier-color); }
+    .tier-card:hover::after { transform: scaleX(1); }
+
+    .tier-card.observer { --tier-color: #7A8499; }
+    .tier-card.spotter  { --tier-color: #3B82F6; }
+    .tier-card.regular  { --tier-color: #00D68F; }
+    .tier-card.spec     { --tier-color: #FFB547; }
+
+    .tier-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 2px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--tier-color);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .tier-name {
+      font-family: var(--font-cond);
+      font-size: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+      color: var(--tier-color);
+    }
+
+    .tier-xp {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-3);
+      margin-bottom: 16px;
+    }
+
+    .tier-desc {
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+
+    /* ─── HUD Data Bar ──────────────────────────────────────────── */
+    .hud-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--border);
+      margin: 80px 0;
+      position: relative;
+    }
+
+    .hud-bar::before {
+      content: 'AIRSPACE STATUS';
+      position: absolute;
+      top: -10px;
+      left: 24px;
+      background: var(--bg);
+      padding: 0 8px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-3);
+      letter-spacing: 0.2em;
+    }
+
+    .hud-cell {
+      padding: 24px 28px;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+
+    .hud-cell:last-child { border-right: none; }
+
+    .hud-key {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-3);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .hud-value {
+      font-family: var(--font-cond);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--green);
+      letter-spacing: -0.01em;
+    }
+
+    .hud-value.amber { color: var(--amber); }
+    .hud-value.blue  { color: var(--blue); }
+    .hud-value.cyan  { color: var(--cyan); }
+
+    .hud-unit {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 4px;
+    }
+
+    /* ─── Transmission Section ──────────────────────────────────── */
+    .transmission-section {
+      padding: 80px 0 100px;
+    }
+
+    .transmission-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 48px;
+      position: relative;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .transmission-box::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(0,214,143,0.06) 0%, transparent 70%);
+    }
+
+    .transmission-box::after {
+      content: 'SQUAWK 7700';
+      position: absolute;
+      top: 16px; right: 24px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: rgba(255,181,71,0.4);
+      letter-spacing: 0.15em;
+    }
+
+    .tx-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--green);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      opacity: 0.7;
+    }
+
+    .tx-heading {
+      font-family: var(--font-cond);
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    .tx-body {
+      font-size: 16px;
+      font-weight: 300;
+      color: var(--text-2);
+      max-width: 520px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .tx-form {
+      display: flex;
+      gap: 0;
+      max-width: 460px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .tx-form .form-input {
+      border-radius: 2px 0 0 2px;
+    }
+
+    .tx-form .form-submit {
+      border-radius: 0 2px 2px 0;
+    }
+
+    .success-message {
+      display: none;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--green);
+      letter-spacing: 0.1em;
+      margin-top: 16px;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .success-message.show { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Footer ────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    footer .inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-copy {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-3);
+      letter-spacing: 0.12em;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-3);
+      text-decoration: none;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--green); }
+
+    /* ─── Animations ────────────────────────────────────────────── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─── Scanline / HUD Decorations ────────────────────────────── */
+    .hud-corner {
+      position: absolute;
+      width: 16px; height: 16px;
+    }
+
+    .hud-corner.tl { top: 0; left: 0; border-top: 1px solid var(--green); border-left: 1px solid var(--green); }
+    .hud-corner.tr { top: 0; right: 0; border-top: 1px solid var(--green); border-right: 1px solid var(--green); }
+    .hud-corner.bl { bottom: 0; left: 0; border-bottom: 1px solid var(--green); border-left: 1px solid var(--green); }
+    .hud-corner.br { bottom: 0; right: 0; border-bottom: 1px solid var(--green); border-right: 1px solid var(--green); }
+
+    /* ─── Mobile ────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .container { padding: 0 20px; }
+      nav .inner { padding: 0 20px; }
+      footer .inner { padding: 0 20px; flex-direction: column; gap: 16px; }
+
+      .features-grid { grid-template-columns: 1fr; }
+      .tiers-grid { grid-template-columns: repeat(2, 1fr); }
+      .hud-bar { grid-template-columns: repeat(2, 1fr); }
+      .hud-cell:nth-child(2) { border-right: none; }
+      .hud-cell:nth-child(3) { border-top: 1px solid var(--border); }
+      .hud-cell:nth-child(4) { border-top: 1px solid var(--border); }
+
+      .waitlist-form { flex-direction: column; }
+      .form-input { border-right: 1px solid var(--border-light); border-radius: 2px; }
+      .form-submit { border-radius: 2px; }
+
+      .transmission-box { padding: 32px 24px; }
+      .tx-form { flex-direction: column; }
+      .tx-form .form-input { border-right: 1px solid var(--border-light); border-radius: 2px; }
+      .tx-form .form-submit { border-radius: 2px; }
+
+      .nav-status { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .tiers-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ─── Aircraft Trail Decoration ─────────────────────────────── */
+    .aircraft-path {
+      position: absolute;
+      pointer-events: none;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Radar Background Canvas -->
+  <canvas id="radar-canvas"></canvas>
+
+  <!-- ─── Nav ─────────────────────────────────────────────────── -->
+  <nav>
+    <div class="inner">
+      <a class="nav-logo" href="#">
+        <div>
+          <div class="nav-wordmark">ATC</div>
+          <div class="callsign">AIR TRAFFIC COMMUNITY</div>
+        </div>
+      </a>
+      <div class="nav-status">
+        <div class="status-dot"></div>
+        <span>SYSTEM NOMINAL</span>
+        <span style="color: var(--text-3); margin: 0 4px">·</span>
+        <span id="live-count" style="color: var(--green)">FL340</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─── Hero ─────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-grid-overlay"></div>
+    <div class="hero-glow"></div>
+
+    <div class="container">
+      <div class="squawk-tag">
+        <div class="blink"></div>
+        EARLY ACCESS OPEN — WAITLIST
+      </div>
+
+      <h1 class="hero-heading">
+        <span class="line-1">Airspace</span>
+        <span class="line-2">+ Community</span>
+        <span class="line-3">+ Progression</span>
+      </h1>
+
+      <p class="hero-sub">
+        ATC is the <strong>community-first aviation platform</strong> built around a live 3D view of global airspace.
+        Not a flight tracker. Something far more interesting.
+      </p>
+
+      <div class="waitlist-form">
+        <div class="form-input-wrap">
+          <span class="input-label">CALLSIGN / EMAIL</span>
+          <input
+            class="form-input"
+            id="hero-email"
+            type="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+          />
+        </div>
+        <button class="form-submit" id="hero-submit" onclick="submitWaitlist('hero')">
+          REQUEST CLEARANCE
+        </button>
+      </div>
+
+      <div class="hero-meta">
+        <div class="hero-meta-item"><span>✓</span> No spam, ever</div>
+        <div class="hero-meta-item"><span>✓</span> Early access perks</div>
+        <div class="hero-meta-item"><span>✓</span> Free forever tier</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Scrolling Data Strip ─────────────────────────────────── -->
+  <div class="counter-strip">
+    <div class="counter-scroll" id="counter-scroll">
+      <!-- Items duplicated in JS for infinite loop -->
+    </div>
+  </div>
+
+  <!-- ─── Features ─────────────────────────────────────────────── -->
+  <section style="padding: 80px 0 60px;">
+    <div class="container">
+      <div class="section-eyebrow">SYSTEM CAPABILITIES</div>
+      <h2 class="section-title reveal">Not a tracker.<br>A living airspace.</h2>
+      <p class="section-body reveal">
+        ATC layers real-time aircraft data with community, culture, and progression — creating something no flight tracker comes close to.
+      </p>
+
+      <div class="features-grid reveal">
+
+        <div class="feature-card">
+          <div class="feature-index">
+            <span>01 / CORE</span>
+            <span style="color: var(--green)">●</span>
+          </div>
+          <div class="feature-icon">✈</div>
+          <div class="feature-title">Live 3D Airspace</div>
+          <p class="feature-desc">Global aircraft rendered in real-time altitude layers. Green for low, amber for mid, blue for high cruise — the sky at a glance.</p>
+        </div>
+
+        <div class="feature-card amber">
+          <div class="feature-index">
+            <span>02 / SOCIAL</span>
+            <span style="color: var(--amber)">●</span>
+          </div>
+          <div class="feature-icon" style="color: var(--amber)">📡</div>
+          <div class="feature-title">Airport Chat Rooms</div>
+          <p class="feature-desc">Tap any airport and join its live channel. Tag aircraft by callsign, discuss movements, share what you're seeing — right now.</p>
+        </div>
+
+        <div class="feature-card blue">
+          <div class="feature-index">
+            <span>03 / CULTURE</span>
+            <span style="color: var(--blue)">●</span>
+          </div>
+          <div class="feature-icon" style="color: var(--blue)">📷</div>
+          <div class="feature-title">Spotting Feed</div>
+          <p class="feature-desc">Photo and video spotter submissions. Like, tag aircraft, earn XP. A community-curated aviation gallery that evolves daily.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-index">
+            <span>04 / GAME</span>
+            <span style="color: var(--green)">●</span>
+          </div>
+          <div class="feature-icon">🏆</div>
+          <div class="feature-title">Tier Progression</div>
+          <p class="feature-desc">Start as an Observer. Earn XP through contributions. Unlock Spotter, Airspace Regular, and eventually Sector Specialist status.</p>
+        </div>
+
+        <div class="feature-card amber">
+          <div class="feature-index">
+            <span>05 / ID</span>
+            <span style="color: var(--amber)">●</span>
+          </div>
+          <div class="feature-icon" style="color: var(--amber)">🪪</div>
+          <div class="feature-title">ATC ID System</div>
+          <p class="feature-desc">Every member gets a unique ATC callsign identifier. Earn licence badges — Student, Private, Commercial — displayed on your profile.</p>
+        </div>
+
+        <div class="feature-card blue">
+          <div class="feature-index">
+            <span>06 / DATA</span>
+            <span style="color: var(--blue)">●</span>
+          </div>
+          <div class="feature-icon" style="color: var(--blue)">📶</div>
+          <div class="feature-title">Real-Time Data</div>
+          <p class="feature-desc">ADS-B sourced. Updates every 4 seconds. Over 10,000 simultaneous aircraft. The sky you see is the sky that's actually there.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── HUD Status Bar ─────────────────────────────────────────── -->
+  <div class="container">
+    <div class="hud-bar reveal">
+      <div class="hud-corner tl"></div>
+      <div class="hud-corner tr"></div>
+      <div class="hud-corner bl"></div>
+      <div class="hud-corner br"></div>
+
+      <div class="hud-cell">
+        <div class="hud-key">AIRCRAFT TRACKED</div>
+        <div class="hud-value" id="stat-aircraft">10,000+</div>
+        <div class="hud-unit">LIVE / GLOBAL</div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-key">UPDATE INTERVAL</div>
+        <div class="hud-value amber">4s</div>
+        <div class="hud-unit">ADS-B REFRESH</div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-key">ALTITUDE BANDS</div>
+        <div class="hud-value blue">3</div>
+        <div class="hud-unit">LOW · MID · HIGH</div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-key">PLATFORM STATUS</div>
+        <div class="hud-value cyan">BETA</div>
+        <div class="hud-unit">LAUNCHING SOON</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Tier Progression ──────────────────────────────────────── -->
+  <section class="tiers-section">
+    <div class="container">
+      <div class="section-eyebrow">PROGRESSION SYSTEM</div>
+      <h2 class="section-title reveal">Earn your rank.<br>Earn your clearance.</h2>
+      <p class="section-body reveal">
+        Participation in ATC should feel earned. Every message, photo, and tag builds toward something real.
+      </p>
+
+      <div class="tiers-grid reveal">
+
+        <div class="tier-card observer">
+          <div class="tier-badge">TIER 01</div>
+          <div class="tier-name">Observer</div>
+          <div class="tier-xp">0 XP — Starting rank</div>
+          <p class="tier-desc">Everyone begins watching. Get familiar with the airspace before you transmit.</p>
+        </div>
+
+        <div class="tier-card spotter">
+          <div class="tier-badge">TIER 02</div>
+          <div class="tier-name">Spotter</div>
+          <div class="tier-xp">500 XP</div>
+          <p class="tier-desc">Your first contributions are logged. You're on the radar. Unlock chat and spotter features.</p>
+        </div>
+
+        <div class="tier-card regular">
+          <div class="tier-badge">TIER 03</div>
+          <div class="tier-name">Airspace Regular</div>
+          <div class="tier-xp">2,000 XP</div>
+          <p class="tier-desc">A consistent presence. Your tags and posts carry weight. Community recognition unlocked.</p>
+        </div>
+
+        <div class="tier-card spec">
+          <div class="tier-badge">TIER 04</div>
+          <div class="tier-name">Sector Specialist</div>
+          <div class="tier-xp">10,000 XP</div>
+          <p class="tier-desc">You've put in the hours. Highest rank. Full features, badge prestige, sector authority.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Final CTA ─────────────────────────────────────────────── -->
+  <section class="transmission-section">
+    <div class="container">
+      <div class="transmission-box reveal">
+        <div class="hud-corner tl"></div>
+        <div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div>
+        <div class="hud-corner br"></div>
+
+        <div class="tx-label">OPEN CHANNEL · TRANSMITTING</div>
+        <h2 class="tx-heading">
+          Cleared for<br>early access.
+        </h2>
+        <p class="tx-body">
+          Join the waitlist. Be among the first to receive your ATC ID, enter the airspace,
+          and start building your rank before the public launch.
+        </p>
+
+        <div class="tx-form">
+          <input
+            class="form-input"
+            id="cta-email"
+            type="email"
+            placeholder="your@email.com"
+            autocomplete="email"
+          />
+          <button class="form-submit" id="cta-submit" onclick="submitWaitlist('cta')">
+            JOIN WAITLIST
+          </button>
+        </div>
+        <div class="success-message" id="cta-success">
+          ✓ TRANSMISSION RECEIVED — YOU'RE ON THE LIST
+        </div>
+        <div class="success-message" id="hero-success" style="margin-top: 12px; text-align: left;">
+          ✓ TRANSMISSION RECEIVED — YOU'RE ON THE LIST
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Footer ───────────────────────────────────────────────── -->
+  <footer>
+    <div class="inner">
+      <div class="footer-copy">© 2026 ATC — AIR TRAFFIC COMMUNITY. ALL RIGHTS RESERVED.</div>
+      <div class="footer-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ─── Radar Canvas ─────────────────────────────────────────────
+    const canvas = document.getElementById('radar-canvas');
+    const ctx = canvas.getContext('2d');
+
+    let W, H, cx, cy, angle = 0;
+    const aircraft = [];
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      cx = W * 0.72;
+      cy = H * 0.45;
+    }
+
+    function spawnAircraft() {
+      const r = Math.random() * Math.min(W, H) * 0.38;
+      const a = Math.random() * Math.PI * 2;
+      aircraft.push({
+        x: cx + Math.cos(a) * r,
+        y: cy + Math.sin(a) * r,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        visible: false,
+        alpha: 0,
+        size: Math.random() * 1.5 + 1.5,
+        trail: [],
+      });
+    }
+
+    for (let i = 0; i < 18; i++) spawnAircraft();
+
+    function drawRadar() {
+      ctx.clearRect(0, 0, W, H);
+
+      const maxR = Math.min(W, H) * 0.42;
+
+      // Concentric rings
+      for (let i = 1; i <= 5; i++) {
+        const r = (maxR / 5) * i;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(0,214,143,${0.04 + i * 0.015})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // Cross hairs
+      ctx.strokeStyle = 'rgba(0,214,143,0.06)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(cx - maxR, cy); ctx.lineTo(cx + maxR, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - maxR); ctx.lineTo(cx, cy + maxR); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - maxR * 0.707, cy - maxR * 0.707); ctx.lineTo(cx + maxR * 0.707, cy + maxR * 0.707); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + maxR * 0.707, cy - maxR * 0.707); ctx.lineTo(cx - maxR * 0.707, cy + maxR * 0.707); ctx.stroke();
+
+      // Sweep gradient
+      const sweepGrad = ctx.createConicalGradient
+        ? ctx.createConicalGradient(angle, cx, cy)
+        : null;
+
+      // Sweep arc (manual)
+      const sweepWidth = Math.PI * 0.45;
+      const sweepGradCanvas = document.createElement('canvas');
+      sweepGradCanvas.width = W; sweepGradCanvas.height = H;
+      const sgCtx = sweepGradCanvas.getContext('2d');
+      const grad = sgCtx.createLinearGradient(
+        cx + Math.cos(angle) * maxR * 0.1, cy + Math.sin(angle) * maxR * 0.1,
+        cx + Math.cos(angle - sweepWidth) * maxR, cy + Math.sin(angle - sweepWidth) * maxR
+      );
+      grad.addColorStop(0, 'rgba(0,214,143,0.14)');
+      grad.addColorStop(1, 'rgba(0,214,143,0)');
+      sgCtx.fillStyle = grad;
+      sgCtx.beginPath();
+      sgCtx.moveTo(cx, cy);
+      sgCtx.arc(cx, cy, maxR, angle - sweepWidth, angle);
+      sgCtx.closePath();
+      sgCtx.fill();
+      ctx.drawImage(sweepGradCanvas, 0, 0);
+
+      // Sweep leading edge line
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(angle) * maxR, cy + Math.sin(angle) * maxR);
+      ctx.strokeStyle = 'rgba(0,214,143,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Center dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,214,143,0.6)';
+      ctx.fill();
+
+      // Update and draw aircraft
+      aircraft.forEach(a => {
+        a.trail.push({ x: a.x, y: a.y, alpha: a.alpha });
+        if (a.trail.length > 12) a.trail.shift();
+
+        // Check if sweep just passed
+        const dx = a.x - cx, dy = a.y - cy;
+        const aAngle = Math.atan2(dy, dx);
+        const diff = ((angle - aAngle) + Math.PI * 2) % (Math.PI * 2);
+        if (diff < 0.05) { a.alpha = 1; a.visible = true; }
+
+        if (a.visible) {
+          // Draw trail
+          a.trail.forEach((pt, i) => {
+            const ta = (i / a.trail.length) * pt.alpha * 0.5;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 1, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0,214,143,${ta})`;
+            ctx.fill();
+          });
+
+          // Draw blip
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, a.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(0,214,143,${a.alpha})`;
+          ctx.fill();
+
+          // Glow
+          const radGrad = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 8);
+          radGrad.addColorStop(0, `rgba(0,214,143,${a.alpha * 0.3})`);
+          radGrad.addColorStop(1, 'rgba(0,214,143,0)');
+          ctx.fillStyle = radGrad;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          a.alpha = Math.max(0, a.alpha - 0.004);
+        }
+
+        a.x += a.vx;
+        a.y += a.vy;
+
+        // Wrap around
+        const dist = Math.sqrt((a.x - cx) ** 2 + (a.y - cy) ** 2);
+        if (dist > maxR * 1.1) {
+          const na = Math.random() * Math.PI * 2;
+          const nr = Math.random() * maxR * 0.8;
+          a.x = cx + Math.cos(na) * nr;
+          a.y = cy + Math.sin(na) * nr;
+          a.visible = false;
+          a.alpha = 0;
+          a.trail = [];
+        }
+      });
+
+      angle += 0.008;
+      if (angle > Math.PI * 2) angle -= Math.PI * 2;
+
+      requestAnimationFrame(drawRadar);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    drawRadar();
+
+    // ─── Scrolling ticker data ──────────────────────────────────
+    const tickerData = [
+      { label: 'AIRCRAFT LIVE', value: '10,247' },
+      { label: 'AIRPORTS TRACKED', value: '9,000+' },
+      { label: 'UPDATE RATE', value: '4 SEC' },
+      { label: 'ALTITUDE BANDS', value: '3 LAYERS' },
+      { label: 'PLATFORM', value: 'iOS · ANDROID' },
+      { label: 'DATA SOURCE', value: 'ADS-B · ADSB.LOL' },
+      { label: 'SQUAWK CODE', value: '1200' },
+      { label: 'TIER LEVELS', value: '4 RANKS' },
+      { label: 'STATUS', value: 'BETA SOON' },
+      { label: 'CLEARANCE', value: 'WAITLIST OPEN' },
+    ];
+
+    const scroll = document.getElementById('counter-scroll');
+    const renderItems = [...tickerData, ...tickerData];
+    renderItems.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'counter-item';
+      el.innerHTML = `<div class="counter-label">${item.label}</div><div class="counter-value">${item.value}</div>`;
+      scroll.appendChild(el);
+    });
+
+    // ─── Live altitude in nav (cycles through FL values) ─────────
+    const flValues = ['FL120', 'FL240', 'FL340', 'FL390', 'FL410', 'FL280', 'FL350'];
+    let flIndex = 0;
+    setInterval(() => {
+      flIndex = (flIndex + 1) % flValues.length;
+      document.getElementById('live-count').textContent = flValues[flIndex];
+    }, 2800);
+
+    // ─── Scroll Reveal ────────────────────────────────────────────
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // ─── Waitlist Form ────────────────────────────────────────────
+    const waitlistEmails = new Set();
+
+    function validateEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function submitWaitlist(source) {
+      const emailEl = document.getElementById(`${source}-email`);
+      const submitEl = document.getElementById(`${source}-submit`);
+      const successEl = document.getElementById(`${source}-success`);
+      const email = emailEl ? emailEl.value.trim() : '';
+
+      if (!validateEmail(email)) {
+        emailEl.style.borderColor = 'rgba(239,68,68,0.6)';
+        emailEl.placeholder = 'INVALID — ENTER VALID EMAIL';
+        setTimeout(() => {
+          emailEl.style.borderColor = '';
+          emailEl.placeholder = source === 'hero' ? 'you@example.com' : 'your@email.com';
+        }, 2000);
+        return;
+      }
+
+      waitlistEmails.add(email);
+
+      submitEl.textContent = '✓ CLEARED';
+      submitEl.classList.add('success');
+      emailEl.value = '';
+      emailEl.disabled = true;
+      submitEl.disabled = true;
+
+      if (successEl) {
+        successEl.classList.add('show');
+      }
+
+      // Store in localStorage
+      const stored = JSON.parse(localStorage.getItem('atc_waitlist') || '[]');
+      stored.push({ email, ts: new Date().toISOString() });
+      localStorage.setItem('atc_waitlist', JSON.stringify(stored));
+
+      // Count update
+      const storedAll = JSON.parse(localStorage.getItem('atc_waitlist') || '[]');
+      console.log(`ATC Waitlist: ${storedAll.length} signups stored locally`);
+    }
+
+    // Allow Enter key on both forms
+    ['hero-email', 'cta-email'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            const source = id.split('-')[0];
+            submitWaitlist(source);
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
