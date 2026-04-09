@@ -1345,10 +1345,11 @@
     document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
     // ─── Mailchimp Config ─────────────────────────────────────────
-    const MC_USER_ID   = '83f022903077dee2ee1a4d6e73e6018d';
+    const MC_USER_ID   = '5f9bbd6ee6e390c603f1aee67';
     const MC_LIST_ID   = 'd8568afe7c';
+    const MC_F_ID      = '0087c2e1f0';
     const MC_DC        = 'us22';
-    const MC_URL       = `https://${MC_DC}.list-manage.com/subscribe/post-json?u=${MC_USER_ID}&id=${MC_LIST_ID}&f_id=00e0ede0f0`;
+    const MC_URL       = `https://${MC_DC}.list-manage.com/subscribe/post-json?u=${MC_USER_ID}&id=${MC_LIST_ID}&f_id=${MC_F_ID}`;
 
     // ─── Waitlist Form ────────────────────────────────────────────
     function validateEmail(email) {
@@ -1378,8 +1379,9 @@
 
       // Mailchimp JSONP submit (bypasses CORS)
       const callbackName = `mc_cb_${Date.now()}`;
+      const honeypot = `&b_${MC_USER_ID}_${MC_LIST_ID}=`; // required anti-bot blank field
       const script = document.createElement('script');
-      script.src = `${MC_URL}&EMAIL=${encodeURIComponent(email)}&c=${callbackName}`;
+      script.src = `${MC_URL}&EMAIL=${encodeURIComponent(email)}${honeypot}&c=${callbackName}`;
 
       window[callbackName] = function(data) {
         delete window[callbackName];
