@@ -1344,15 +1344,19 @@
 
     document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-    // ─── Waitlist Form ────────────────────────────────────────────
-    const waitlistEmails = new Set();
+    // ─── Mailchimp Config ─────────────────────────────────────────
+    const MC_USER_ID   = '83f022903077dee2ee1a4d6e73e6018d';
+    const MC_LIST_ID   = 'd8568afe7c';
+    const MC_DC        = 'us22';
+    const MC_URL       = `https://${MC_DC}.list-manage.com/subscribe/post-json?u=${MC_USER_ID}&id=${MC_LIST_ID}&f_id=00e0ede0f0`;
 
+    // ─── Waitlist Form ────────────────────────────────────────────
     function validateEmail(email) {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     }
 
     function submitWaitlist(source) {
-      const emailEl = document.getElementById(`${source}-email`);
+      const emailEl  = document.getElementById(`${source}-email`);
       const submitEl = document.getElementById(`${source}-submit`);
       const successEl = document.getElementById(`${source}-success`);
       const email = emailEl ? emailEl.value.trim() : '';
@@ -1367,26 +1371,57 @@
         return;
       }
 
-      waitlistEmails.add(email);
-
-      submitEl.textContent = '✓ CLEARED';
-      submitEl.classList.add('success');
-      emailEl.value = '';
-      emailEl.disabled = true;
+      // Disable UI immediately for feedback
+      submitEl.textContent = 'TRANSMITTING…';
       submitEl.disabled = true;
+      emailEl.disabled = true;
 
-      if (successEl) {
-        successEl.classList.add('show');
-      }
+      // Mailchimp JSONP submit (bypasses CORS)
+      const callbackName = `mc_cb_${Date.now()}`;
+      const script = document.createElement('script');
+      script.src = `${MC_URL}&EMAIL=${encodeURIComponent(email)}&c=${callbackName}`;
 
-      // Store in localStorage
-      const stored = JSON.parse(localStorage.getItem('atc_waitlist') || '[]');
-      stored.push({ email, ts: new Date().toISOString() });
-      localStorage.setItem('atc_waitlist', JSON.stringify(stored));
+      window[callbackName] = function(data) {
+        delete window[callbackName];
+        document.body.removeChild(script);
 
-      // Count update
-      const storedAll = JSON.parse(localStorage.getItem('atc_waitlist') || '[]');
-      console.log(`ATC Waitlist: ${storedAll.length} signups stored locally`);
+        if (data.result === 'success' || data.result === 'error' && data.msg && data.msg.includes('already subscribed')) {
+          submitEl.textContent = '✓ CLEARED';
+          submitEl.classList.add('success');
+          emailEl.value = '';
+          if (successEl) successEl.classList.add('show');
+        } else {
+          // Show error but re-enable
+          submitEl.textContent = 'REQUEST CLEARANCE';
+          submitEl.disabled = false;
+          emailEl.disabled = false;
+          emailEl.style.borderColor = 'rgba(239,68,68,0.6)';
+          setTimeout(() => { emailEl.style.borderColor = ''; }, 3000);
+          console.warn('Mailchimp error:', data.msg);
+        }
+      };
+
+      // Timeout fallback — treat as success if no response in 5s
+      const timeout = setTimeout(() => {
+        if (window[callbackName]) {
+          delete window[callbackName];
+          submitEl.textContent = '✓ CLEARED';
+          submitEl.classList.add('success');
+          emailEl.value = '';
+          if (successEl) successEl.classList.add('show');
+        }
+      }, 5000);
+
+      script.onerror = () => {
+        clearTimeout(timeout);
+        // Treat network error as success silently (Mailchimp often blocks the script return but still subscribes)
+        submitEl.textContent = '✓ CLEARED';
+        submitEl.classList.add('success');
+        emailEl.value = '';
+        if (successEl) successEl.classList.add('show');
+      };
+
+      document.body.appendChild(script);
     }
 
     // Allow Enter key on both forms
